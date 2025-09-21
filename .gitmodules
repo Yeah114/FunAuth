@@ -1,0 +1,8 @@
+[submodule "modules/g79client"]
+	path = modules/g79client
+	url = git@github.com:Yeah114/g79client.git
+	branch = main
+[submodule "modules/unmcpk"]
+	path = modules/unmcpk
+	url = git@github.com:Yeah114/unmcpk.git
+	branch = main

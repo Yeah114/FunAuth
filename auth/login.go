@@ -188,7 +188,7 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 	}
 
 	result.UID = cli.UserID
-	result.EntityID = cli.UserDetail.EntityID.String()
+	result.EntityID = cli.UserDetail.EntityID
 	result.MasterName = cli.UserDetail.Name
 	if result.MasterName == "" {
 		result.MasterName = cli.UserID

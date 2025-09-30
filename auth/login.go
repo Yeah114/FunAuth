@@ -47,6 +47,19 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 	if after, ok := strings.CutPrefix(p.ServerCode, "LobbyGame:"); ok && after != "" {
 		// 联机大厅
 		roomCode := after
+		if len(roomCode) != 19 {
+			searchResp, err := cli.SearchOnlineLobbyRoomByKeyword(roomCode, 1, 0)
+			if err != nil {
+				return result, fmt.Errorf("SearchOnlineLobbyRoomByKeyword: %w", err)
+			}
+			if searchResp.Code != 0 {
+				return result, fmt.Errorf("SearchOnlineLobbyRoomByKeyword: %s(%d)", searchResp.Message, searchResp.Code)
+			}
+			if len(searchResp.Entities) == 0 {
+				return result, fmt.Errorf("SearchOnlineLobbyRoomByKeyword: 找不到房间")
+			}
+			roomCode = searchResp.Entities[0].RoomID.String()
+		}
 
 		// 获取房间信息
 		roomInfo, err := cli.GetOnlineLobbyRoom(roomCode)
@@ -67,17 +80,23 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 		}
 
 		// 进入房间
-		enterResp, err := cli.EnterOnlineLobbyRoom(roomCode, p.ServerPassword)
-		if err != nil {
-			return result, fmt.Errorf("EnterOnlineLobbyRoom: %w", err)
-		}
-		// 需要重试
-		if enterResp.Code == 501 {
-			_, _ = cli.PurchaseItem(roomInfo.Entity.ResID.String())
+		var enterResp *g79.OnlineLobbyRoomEnterResponse
+		maxRetries := 3
+		for attempt := 1; attempt <= maxRetries; attempt++ {
 			enterResp, err = cli.EnterOnlineLobbyRoom(roomCode, p.ServerPassword)
 			if err != nil {
 				return result, fmt.Errorf("EnterOnlineLobbyRoom: %w", err)
 			}
+			if enterResp.Code != 501 {
+				break
+			}
+			if attempt < maxRetries {
+				_, _ = cli.PurchaseItem(roomInfo.Entity.ResID.String())
+				time.Sleep(500 * time.Millisecond)
+			}
+		}
+		if enterResp.Code == 501 {
+			return result, fmt.Errorf("EnterOnlineLobbyRoom: %s(%d)", enterResp.Message, enterResp.Code)
 		}
 		if enterResp.Code != 0 {
 			return result, fmt.Errorf("EnterOnlineLobbyRoom: %s(%d)", enterResp.Message, enterResp.Code)

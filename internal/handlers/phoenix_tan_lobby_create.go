@@ -3,7 +3,6 @@ package handlers
 import (
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/Yeah114/FunAuth/auth"
 	"github.com/Yeah114/g79client"
@@ -12,13 +11,6 @@ import (
 
 func RegisterPhoenixTanLobbyCreateRoute(api *gin.RouterGroup) {
 	api.POST("/phoenix/tan_lobby_create", func(c *gin.Context) {
-		rawAuthorization := c.GetHeader("Authorization")
-		authorization := strings.TrimPrefix(rawAuthorization, "Bearer ")
-		if authorization == "" {
-			c.JSON(http.StatusOK, TanLobbyCreateResponse{Success: false, ErrorInfo: "TanLobbyCreate: Authorization header missing Bearer token"})
-			return
-		}
-
 		var req TanLobbyCreateRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusOK, TanLobbyCreateResponse{Success: false, ErrorInfo: fmt.Sprintf("TanLobbyCreate: 绑定请求体时出现问题, 原因是 %v", err)})

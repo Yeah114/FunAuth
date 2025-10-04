@@ -43,6 +43,7 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 	if p.ServerCode == "" {
 		return result, fmt.Errorf("server code is empty")
 	}
+	p.ServerPassword = strings.ReplaceAll(p.ServerPassword, "000000", "")
 
 	if after, ok := strings.CutPrefix(p.ServerCode, "LobbyGame:"); ok && after != "" {
 		// 联机大厅

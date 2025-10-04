@@ -8,8 +8,7 @@ import (
 	"time"
 
 	g79 "github.com/Yeah114/g79client"
-	link "github.com/Yeah114/g79client/service/link_connection"
-
+	//link "github.com/Yeah114/g79client/service/link_connection"
 )
 
 var random = rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -220,6 +219,7 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 	result.BotLevel = int(cli.UserDetail.Level.Int64())
 	result.EngineVersion = cli.EngineVersion
 	result.PatchVersion = cli.LatestVersion
+	/*
 	service, err := link.NewLinkConnectionService(cli)
 	if err != nil {
 		return result, err
@@ -237,5 +237,6 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 	if err := conn.SendGameStop(nil); err != nil {
 		return result, err
 	}
+	*/
 	return result, nil
 }

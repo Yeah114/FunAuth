@@ -27,7 +27,7 @@ func RegisterPhoenixTanLobbyCreateRoute(api *gin.RouterGroup) {
 			return
 		}
 
-		if err := cli.AuthenticateWithCookie(cookieStr); err != nil {
+		if err := cli.G79AuthenticateWithCookie(cookieStr); err != nil {
 			c.JSON(http.StatusOK, TanLobbyCreateResponse{Success: false, ErrorInfo: fmt.Sprintf("TanLobbyCreate: 使用 Cookie 认证时出现问题, 原因是 %v", err)})
 			return
 		}

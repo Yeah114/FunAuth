@@ -3,10 +3,8 @@ package auth
 import (
 	"context"
 	cryptoRand "crypto/rand"
-	"encoding/json"
 	"fmt"
 	"math/rand"
-	"net/http"
 	"time"
 
 	"github.com/Yeah114/g79client"
@@ -101,30 +99,20 @@ type transferServerEntry struct {
 }
 
 func selectTransferServer(cli *g79client.Client) (string, string, error) {
-	release := cli.ReleaseJSON
-	if release == nil {
-		r, err := cli.GetReleaseJSON()
-		if err != nil {
-			return "", "", fmt.Errorf("SelectTransferServer: %w", err)
-		}
-		release = r
-	}
-
-	resp, err := http.Get(release.TransferServerUrl)
+	servers, err := g79client.GetGlobalG79TransferServers()
 	if err != nil {
 		return "", "", fmt.Errorf("SelectTransferServer: %w", err)
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", "", fmt.Errorf("SelectTransferServer: API Server return a non-OK status code which is %d", resp.StatusCode)
-	}
 
 	var list []transferServerEntry
-	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
-		return "", "", fmt.Errorf("SelectTransferServer: %w", err)
+	for _, s := range servers {
+		list = append(list, transferServerEntry{
+			Status:         int(s.Status.Int64()),
+			ServerIP:       s.IP,
+			SignalWebPort:  int(s.SignalWebPort.Int64()),
+			WebsocketPorts: s.Ports,
+		})
 	}
-
 	available := make([]transferServerEntry, 0, len(list))
 	for _, entry := range list {
 		if len(entry.WebsocketPorts) == 0 || entry.ServerIP == "" || entry.SignalWebPort == 0 {

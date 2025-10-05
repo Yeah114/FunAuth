@@ -15,7 +15,7 @@ func TransferCheckNum(ctx context.Context, data, engineVersion, patchVersion str
 		engineVersion = g79.EngineVersion
 	}
 	if patchVersion == "" {
-		latestVersion, err := g79.GetGlobalLatestVersion()
+		latestVersion, err := g79.GetGlobalG79LatestVersion()
 		if err != nil {
 			return "", fmt.Errorf("get latest version failed")
 		}

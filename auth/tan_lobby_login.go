@@ -100,7 +100,7 @@ func TanLobbyLogin(ctx context.Context, cli *g79client.Client, p TanLobbyLoginPa
 
 	roomTransferServerID := int(target.SRV.Int64())
 	if roomTransferServerID != 0 {
-		servers, err := g79client.GetGlobalTransferServers()
+		servers, err := g79client.GetGlobalG79TransferServers()
 		if err != nil {
 			return result, fmt.Errorf("get transfer servers: %w", err)
 		}

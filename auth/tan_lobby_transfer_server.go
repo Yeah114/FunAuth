@@ -7,7 +7,7 @@ import (
 )
 
 func TransferServerList() ([]string, []string, error) {
-	servers, err := g79client.GetGlobalTransferServers()
+	servers, err := g79client.GetGlobalG79TransferServers()
 	if err != nil {
 		return nil, nil, err
 	}

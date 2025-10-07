@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Yeah114/FunAuth/internal/router"
+	"github.com/Yeah114/FunAuth/cmd/funauth/internal/router"
 )
 
 func main() {

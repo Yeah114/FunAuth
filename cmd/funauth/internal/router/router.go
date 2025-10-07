@@ -7,7 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/Yeah114/FunAuth/internal/handlers"
+	"github.com/Yeah114/FunAuth/cmd/funauth/internal/handlers"
 )
 
 func NewRouter() *gin.Engine {

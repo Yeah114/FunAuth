@@ -30,7 +30,7 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 		cli.UserDetail = &detail.Entity
 	}
 	if cli.UserDetail != nil && cli.UserDetail.Name == "" {
-		name := fmt.Sprintf("SW%06d", random.Intn(1000000))
+		name := fmt.Sprintf("AE%09d", random.Intn(1000000000))
 		if err := cli.UpdateNickname(name); err != nil {
 			return result, fmt.Errorf("UpdateNickname: %w", err)
 		}

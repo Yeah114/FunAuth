@@ -96,6 +96,7 @@ func RegisterPhoenixLoginRoute(api *gin.RouterGroup) {
 		session.Store(sessionKeyEngineVersion, loginRes.EngineVersion)
 		session.Store(sessionKeyPatchVersion, loginRes.PatchVersion)
 		session.Store(sessionKeyUserID, loginRes.UID)
+		session.Store(sessionKeyIsPC, loginRes.IsPC)
 
 		resp := LoginResponse{
 			SuccessStates:  true,

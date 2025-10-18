@@ -25,9 +25,12 @@ func RegisterPhoenixTransferCheckNumRoute(api *gin.RouterGroup) {
 		patchVersionRaw, _ := session.Load(sessionKeyPatchVersion)
 		engineVersionStr, _ := engineVersionRaw.(string)
 		patchVersionStr, _ := patchVersionRaw.(string)
+		isPCRaw, _ := session.Load(sessionKeyIsPC)
+		isPC, _ := isPCRaw.(bool)
 
 		value, err := auth.TransferCheckNum(
 			c.Request.Context(),
+			isPC,
 			req.Data,
 			engineVersionStr,
 			patchVersionStr,

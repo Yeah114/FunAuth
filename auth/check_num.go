@@ -10,7 +10,7 @@ import (
 )
 
 // TransferCheckNum 调用 unmcpk 模块生成校验值
-func TransferCheckNum(ctx context.Context, data, engineVersion, patchVersion string) (string, error) {
+func TransferCheckNum(ctx context.Context, isPC bool, data, engineVersion, patchVersion string) (string, error) {
 	if engineVersion == "" {
 		engineVersion = g79.EngineVersion
 	}
@@ -23,7 +23,7 @@ func TransferCheckNum(ctx context.Context, data, engineVersion, patchVersion str
 	}
 
 	python3Path := os.Getenv("FUNAUTH_PYTHON3")
-	value, err := unmcpk.GenerateTransferCheckNum(data, engineVersion, patchVersion, python3Path)
+	value, err := unmcpk.GenerateTransferCheckNum(isPC, data, engineVersion, patchVersion, python3Path)
 	if err != nil {
 		return "", err
 	}

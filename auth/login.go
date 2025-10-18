@@ -124,6 +124,102 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 			return result, fmt.Errorf("SendAuthV2Request: %w", err)
 		}
 		chainInfoStr = string(chainInfo)
+	} else if after, ok := strings.CutPrefix(p.ServerCode, "PCLobbyGame:"); ok && after != "" {
+		// PC联机大厅
+		newCli, err := g79.NewClient()
+		if err != nil {
+			return result, fmt.Errorf("NewClient: %w", err)
+		}
+		for {
+			time.Sleep(time.Second)
+			err = newCli.X19AuthenticateWithCookie(cli.Cookie)
+			if err == nil {
+				break
+			}
+			if strings.Contains(err.Error(), "操作过于频繁，请稍后重试") {
+				continue
+			}
+		}
+		cli = newCli
+		roomCode := after
+		if len(roomCode) != 19 {
+			searchResp, err := cli.SearchOnlineLobbyRoomByKeyword(roomCode, 1, 0)
+			if err != nil {
+				return result, fmt.Errorf("SearchOnlineLobbyRoomByKeyword: %w", err)
+			}
+			if searchResp.Code != 0 {
+				return result, fmt.Errorf("SearchOnlineLobbyRoomByKeyword: %s(%d)", searchResp.Message, searchResp.Code)
+			}
+			if len(searchResp.Entities) == 0 {
+				return result, fmt.Errorf("SearchOnlineLobbyRoomByKeyword: 找不到房间")
+			}
+			roomCode = searchResp.Entities[0].RoomID.String()
+		}
+
+		// 获取房间信息
+		roomInfo, err := cli.GetOnlineLobbyRoom(roomCode)
+		if err != nil {
+			return result, fmt.Errorf("GetOnlineLobbyRoom: %w", err)
+		}
+		if roomInfo.Code != 0 {
+			return result, fmt.Errorf("GetOnlineLobbyRoom: %s(%d)", roomInfo.Message, roomInfo.Code)
+		}
+
+		
+		// 购买房间地图
+		roomMap, err := cli.UserItemPurchase(roomInfo.Entity.ResID.String())
+		if err != nil {
+			return result, fmt.Errorf("UserItemPurchase: %w", err)
+		}
+		if !(roomMap.Code == 0 || roomMap.Code == 502 || roomMap.Code == 44) {
+			return result, fmt.Errorf("UserItemPurchase: %s(%d)", roomMap.Message, roomMap.Code)
+		}
+		
+
+		// 进入房间
+		var enterResp *g79.OnlineLobbyRoomEnterResponse
+		maxRetries := 3
+		for attempt := 1; attempt <= maxRetries; attempt++ {
+			enterResp, err = cli.EnterOnlineLobbyRoom(roomCode, p.ServerPassword)
+			if err != nil {
+				return result, fmt.Errorf("EnterOnlineLobbyRoom: %w", err)
+			}
+			if enterResp.Code != 501 {
+				break
+			}
+			if attempt < maxRetries {
+				_, _ = cli.UserItemPurchase(roomInfo.Entity.ResID.String())
+				time.Sleep(500 * time.Millisecond)
+			}
+		}
+		if enterResp.Code == 501 {
+			return result, fmt.Errorf("EnterOnlineLobbyRoom: %s(%d)", enterResp.Message, enterResp.Code)
+		}
+		if enterResp.Code != 0 {
+			return result, fmt.Errorf("EnterOnlineLobbyRoom: %s(%d)", enterResp.Message, enterResp.Code)
+		}
+
+		// 进入房间游戏
+		gameEnter, err := cli.OnlineLobbyGameEnter()
+		if err != nil {
+			return result, fmt.Errorf("OnlineLobbyGameEnter: %w", err)
+		}
+		if gameEnter.Code != 0 {
+			return result, fmt.Errorf("OnlineLobbyGameEnter: %s(%d)", gameEnter.Message, gameEnter.Code)
+		}
+		ipAddress = fmt.Sprintf("%s:%d", gameEnter.Entity.ServerHost, gameEnter.Entity.ServerPort.Int64())
+
+		// 获取 ChainInfo
+		authv2Data, err := cli.GeneratePCLobbyGameAuthV2(roomInfo.Entity.ResID.String(), p.ClientPublicKey)
+		if err != nil {
+			return result, fmt.Errorf("GeneratePCLobbyGameAuthV2: %w", err)
+		}
+		chainInfo, err := cli.SendAuthV2Request(authv2Data)
+		if err != nil {
+			return result, fmt.Errorf("SendAuthV2Request: %w", err)
+		}
+		chainInfoStr = string(chainInfo)
+		result.IsPC = true
 	} else if after, ok := strings.CutPrefix(p.ServerCode, "NetworkGame:"); ok && after != "" {
 		// 网络游戏
 		gameCode := after

@@ -12,6 +12,7 @@ const (
 	sessionKeyEngineVersion = "SESSION_KEY_ENGINE_VERSION"
 	sessionKeyPatchVersion  = "SESSION_KEY_PATCH_VERSION"
 	sessionKeyUserID        = "SESSION_KEY_USER_ID"
+	sessionKeyIsPC          = "SESSION_KEY_IS_PC"
 )
 
 var sessionStore sync.Map // map[string]*sync.Map

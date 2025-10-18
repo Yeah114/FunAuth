@@ -18,6 +18,7 @@ type LoginResult struct {
 	EntityID      string
 	EngineVersion string
 	PatchVersion  string
+	IsPC          bool
 }
 
 type SkinInfo struct {

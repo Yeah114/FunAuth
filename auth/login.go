@@ -60,7 +60,7 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 			if len(searchResp.Entities) == 0 {
 				return result, fmt.Errorf("SearchOnlineLobbyRoomByKeyword: 找不到房间")
 			}
-			roomCode = searchResp.Entities[0].RoomID.String()
+			roomCode = searchResp.Entities[0].EntityID.String()
 		}
 
 		// 获取房间信息
@@ -153,7 +153,7 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 			if len(searchResp.Entities) == 0 {
 				return result, fmt.Errorf("SearchOnlineLobbyRoomByKeyword: 找不到房间")
 			}
-			roomCode = searchResp.Entities[0].RoomID.String()
+			roomCode = searchResp.Entities[0].EntityID.String()
 		}
 
 		// 获取房间信息

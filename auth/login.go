@@ -126,7 +126,7 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 		chainInfoStr = string(chainInfo)
 	} else if after, ok := strings.CutPrefix(p.ServerCode, "PCLobbyGame:"); ok && after != "" {
 		// PC联机大厅
-		newCli, err := g79.NewClient()
+		newCli, err := NewG79Client(ctx)
 		if err != nil {
 			return result, fmt.Errorf("NewClient: %w", err)
 		}
@@ -165,7 +165,6 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 			return result, fmt.Errorf("GetOnlineLobbyRoom: %s(%d)", roomInfo.Message, roomInfo.Code)
 		}
 
-		
 		// 购买房间地图
 		roomMap, err := cli.UserItemPurchase(roomInfo.Entity.ResID.String())
 		if err != nil {
@@ -174,7 +173,6 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 		if !(roomMap.Code == 0 || roomMap.Code == 502 || roomMap.Code == 44) {
 			return result, fmt.Errorf("UserItemPurchase: %s(%d)", roomMap.Message, roomMap.Code)
 		}
-		
 
 		// 进入房间
 		var enterResp *g79.OnlineLobbyRoomEnterResponse
@@ -316,23 +314,23 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 	result.EngineVersion = cli.EngineVersion
 	result.PatchVersion = cli.G79LatestVersion
 	/*
-	service, err := link.NewLinkConnectionService(cli)
-	if err != nil {
-		return result, err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	conn, err := service.Dial(ctx)
-	if err != nil {
-		return result, err
-	}
-	defer conn.Close()
-	if err := conn.SendGameStart(nil); err != nil {
-		return result, err
-	}
-	if err := conn.SendGameStop(nil); err != nil {
-		return result, err
-	}
+		service, err := link.NewLinkConnectionService(cli)
+		if err != nil {
+			return result, err
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		conn, err := service.Dial(ctx)
+		if err != nil {
+			return result, err
+		}
+		defer conn.Close()
+		if err := conn.SendGameStart(nil); err != nil {
+			return result, err
+		}
+		if err := conn.SendGameStop(nil); err != nil {
+			return result, err
+		}
 	*/
 	return result, nil
 }

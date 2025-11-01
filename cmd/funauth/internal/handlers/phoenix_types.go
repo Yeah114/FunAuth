@@ -34,7 +34,10 @@ type LoginResponse struct {
 }
 
 type TransferCheckNumRequest struct {
-	Data string `json:"data"`
+	Data           string `json:"data"`
+	EngineVersion  string `json:"engine_version,omitempty"`
+	PatchVersion   string `json:"patch_version,omitempty"`
+	IsPC           *bool  `json:"is_pc,omitempty"`
 }
 
 type TransferCheckNumResponse struct {

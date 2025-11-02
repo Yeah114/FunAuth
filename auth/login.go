@@ -178,7 +178,7 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 
 		// 进入房间
 		var enterResp *g79.OnlineLobbyRoomEnterResponse
-		maxRetries := 3
+		maxRetries := 5
 		for attempt := 1; attempt <= maxRetries; attempt++ {
 			enterResp, err = cli.EnterOnlineLobbyRoom(roomCode, p.ServerPassword)
 			if err != nil {
@@ -189,7 +189,7 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 			}
 			if attempt < maxRetries {
 				_, _ = cli.UserItemPurchase(roomInfo.Entity.ResID.String())
-				time.Sleep(500 * time.Millisecond)
+				time.Sleep(time.Second)
 			}
 		}
 		if enterResp.Code == 501 {
@@ -328,6 +328,80 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 		if enterResp.Code != 0 {
 			return result, fmt.Errorf("RequestLeaveDomainServer: %s(%d)", leaveResp.Message, leaveResp.Code)
 		}
+
+		// 删除山头服务器
+		if _, delErr := cli.DeleteOtherDomainServer(serverID); delErr != nil {
+			return result, fmt.Errorf("DeleteOtherDomainServer(after auth-v2): %w", delErr)
+		}
+	} else if after, ok := strings.CutPrefix(p.ServerCode, "PCDomainGame:"); ok && after != "" {
+		// PC我的山头
+		inviteCode := after
+
+		// 清理已存在的其他山头服务器（避免冲突）
+		resp, err := cli.GetOtherDomainServers()
+		if err != nil {
+			return result, fmt.Errorf("GetOtherDomainServers: %w", err)
+		}
+		for _, server := range resp.Entities {
+			if _, delErr := cli.DeleteOtherDomainServer(server.Sid); delErr != nil {
+				return result, fmt.Errorf("DeleteOtherDomainServer: %w", delErr)
+			}
+		}
+
+		// 通过邀请码加入山头服务器
+		inviteResp, err := cli.JoinDomainServerWithInviteCode(inviteCode)
+		if err != nil {
+			return result, fmt.Errorf("JoinDomainServerWithInviteCode: %w", err)
+		}
+		if inviteResp.Code != 0 {
+			return result, fmt.Errorf("JoinDomainServerWithInviteCode: %s(%d)", inviteResp.Message, inviteResp.Code)
+		}
+
+		// 获取加入后的山头服务器ID
+		serversResp, err := cli.GetOtherDomainServers()
+		if err != nil {
+			return result, fmt.Errorf("GetOtherDomainServers(after join): %w", err)
+		}
+		if len(serversResp.Entities) == 0 {
+			return result, fmt.Errorf("GetOtherDomainServers: 加入后未找到山头服务器")
+		}
+		serverID := serversResp.Entities[0].Sid
+
+		// 请求进入山头服务器（获取IP和端口）
+		enterResp, err := cli.RequestEnterDomainServer(serverID)
+		if err != nil {
+			return result, fmt.Errorf("RequestEnterDomainServer(sid=%s): %w", serverID, err)
+		}
+		if enterResp.Code != 0 {
+			return result, fmt.Errorf("RequestEnterDomainServer: %s(%d)", enterResp.Message, enterResp.Code)
+		}
+		ipAddress = fmt.Sprintf("%s:%d", enterResp.Entity.ServerHost, enterResp.Entity.ServerPort.Int64())
+
+		// 生成PCDomainGame认证数据并获取ChainInfo
+		authv2Data, err := cli.GeneratePCDomainGameAuthV2(serverID, p.ClientPublicKey)
+		if err != nil {
+			return result, fmt.Errorf("GeneratePCDomainGameAuthV2: %w", err)
+		}
+		chainInfo, err := cli.SendAuthV2Request(authv2Data)
+		if err != nil {
+			return result, fmt.Errorf("SendAuthV2Request: %w", err)
+		}
+		chainInfoStr = string(chainInfo)
+
+		// 请求离开山头服务器
+		leaveResp, err := cli.RequestLeaveDomainServer(serverID)
+		if err != nil {
+			return result, fmt.Errorf("RequestLeaveDomainServer(sid=%s): %w", serverID, err)
+		}
+		if enterResp.Code != 0 {
+			return result, fmt.Errorf("RequestLeaveDomainServer: %s(%d)", leaveResp.Message, leaveResp.Code)
+		}
+
+		// 删除山头服务器
+		if _, delErr := cli.DeleteOtherDomainServer(serverID); delErr != nil {
+			return result, fmt.Errorf("DeleteOtherDomainServer(after auth-v2): %w", delErr)
+		}
+		result.IsPC = true
 	} else {
 		// 租赁服
 		serverCode := p.ServerCode

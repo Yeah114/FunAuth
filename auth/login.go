@@ -319,6 +319,15 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 			return result, fmt.Errorf("SendAuthV2Request: %w", err)
 		}
 		chainInfoStr = string(chainInfo)
+
+		// 请求离开山头服务器
+		leaveResp, err := cli.RequestLeaveDomainServer(serverID)
+		if err != nil {
+			return result, fmt.Errorf("RequestLeaveDomainServer(sid=%s): %w", serverID, err)
+		}
+		if enterResp.Code != 0 {
+			return result, fmt.Errorf("RequestLeaveDomainServer: %s(%d)", leaveResp.Message, leaveResp.Code)
+		}
 	} else {
 		// 租赁服
 		serverCode := p.ServerCode

@@ -301,7 +301,7 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 
 		// 请求进入山头服务器（获取IP和端口）
 		enterResp, err := cli.RequestEnterDomainServer(serverID)
-		if err != nil {
+		if err != nil && !strings.Contains(err.Error(), "json") {
 			return result, fmt.Errorf("RequestEnterDomainServer(sid=%s): %w", serverID, err)
 		}
 		if enterResp.Code != 0 {

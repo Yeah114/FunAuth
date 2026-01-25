@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/Yeah114/FunAuth/auth"
-	"github.com/Yeah114/g79client"
 	"github.com/gin-gonic/gin"
 )
 
@@ -35,7 +34,7 @@ func RegisterPhoenixLoginRoute(api *gin.RouterGroup) {
 			cookieStr = fixedCookie
 		}
 
-		cli, err := g79client.NewClient()
+		cli, err := auth.NewG79Client(c.Request.Context())
 		if err != nil {
 			c.JSON(http.StatusOK, LoginResponse{
 				SuccessStates: false,

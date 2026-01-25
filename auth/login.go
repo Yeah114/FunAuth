@@ -126,7 +126,7 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 		chainInfoStr = string(chainInfo)
 	} else if after, ok := strings.CutPrefix(p.ServerCode, "PCLobbyGame:"); ok && after != "" {
 		// PC联机大厅
-		newCli, err := g79.NewClient()
+		newCli, err := NewG79Client(ctx)
 		if err != nil {
 			return result, fmt.Errorf("NewClient: %w", err)
 		}
@@ -518,6 +518,28 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 	result.BotLevel = int(cli.UserDetail.Level.Int64())
 	result.EngineVersion = cli.EngineVersion
 	result.PatchVersion = cli.G79LatestVersion
+<<<<<<< HEAD
 
+=======
+	/*
+		service, err := link.NewLinkConnectionService(cli)
+		if err != nil {
+			return result, err
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		conn, err := service.Dial(ctx)
+		if err != nil {
+			return result, err
+		}
+		defer conn.Close()
+		if err := conn.SendGameStart(nil); err != nil {
+			return result, err
+		}
+		if err := conn.SendGameStop(nil); err != nil {
+			return result, err
+		}
+	*/
+>>>>>>> refs/remotes/origin/main
 	return result, nil
 }

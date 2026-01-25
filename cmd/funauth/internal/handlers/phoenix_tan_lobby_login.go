@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"github.com/Yeah114/FunAuth/auth"
-	"github.com/Yeah114/g79client"
 	"github.com/gin-gonic/gin"
 )
 
@@ -21,7 +20,7 @@ func RegisterPhoenixTanLobbyLoginRoute(api *gin.RouterGroup) {
 			cookieStr = fixedCookie
 		}
 
-		cli, err := g79client.NewClient()
+		cli, err := auth.NewG79Client(c.Request.Context())
 		if err != nil {
 			c.JSON(http.StatusOK, TanLobbyLoginResponse{Success: false, ErrorInfo: fmt.Sprintf("TanLobbyLogin: 初始化客户端时出现问题, 原因是 %v", err)})
 			return

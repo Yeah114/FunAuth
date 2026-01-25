@@ -2,13 +2,14 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"strings"
 	"time"
 
 	g79 "github.com/Yeah114/g79client"
-	//link "github.com/Yeah114/g79client/service/link_connection"
+	link "github.com/Yeah114/g79client/service/link_connection"
 )
 
 var random = rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -16,7 +17,6 @@ var random = rand.New(rand.NewSource(time.Now().UnixNano()))
 // Login
 func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, error) {
 	var result LoginResult
-
 	if cli == nil {
 		return result, fmt.Errorf("nil client")
 	}
@@ -165,7 +165,6 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 			return result, fmt.Errorf("GetOnlineLobbyRoom: %s(%d)", roomInfo.Message, roomInfo.Code)
 		}
 
-		
 		// 购买房间地图
 		roomMap, err := cli.UserItemPurchase(roomInfo.Entity.ResID.String())
 		if err != nil {
@@ -174,7 +173,6 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 		if !(roomMap.Code == 0 || roomMap.Code == 502 || roomMap.Code == 44) {
 			return result, fmt.Errorf("UserItemPurchase: %s(%d)", roomMap.Message, roomMap.Code)
 		}
-		
 
 		// 进入房间
 		var enterResp *g79.OnlineLobbyRoomEnterResponse
@@ -301,7 +299,7 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 
 		// 请求进入山头服务器（获取IP和端口）
 		enterResp, err := cli.RequestEnterDomainServer(serverID)
-		if err != nil && !strings.Contains(err.Error(), "json") {
+		if err != nil {
 			return result, fmt.Errorf("RequestEnterDomainServer(sid=%s): %w", serverID, err)
 		}
 		if enterResp.Code != 0 {
@@ -417,7 +415,31 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 		if len(searchResp.Entities) == 0 {
 			return result, fmt.Errorf("SearchRentalServerByName: 找不到服务器")
 		}
-		serverID := searchResp.Entities[0].EntityID
+		serverEntity := searchResp.Entities[0]
+		serverID := serverEntity.EntityID
+
+		ownerID := strings.TrimSpace(serverEntity.OwnerID.String())
+		var ownerName string
+		if ownerID != "" {
+			ownerInfo, err := cli.GetUserElseDetailMany([]string{ownerID})
+			if err != nil {
+				return result, fmt.Errorf("GetUserElseDetailMany(owner_id=%s): %w", ownerID, err)
+			}
+			if ownerInfo.Code != 0 {
+				return result, fmt.Errorf("GetUserElseDetailMany: %s(%d)", ownerInfo.Message, ownerInfo.Code)
+			}
+			if len(ownerInfo.Entities) == 0 {
+				return result, fmt.Errorf("GetUserElseDetailMany: 未返回服主信息")
+			}
+			ownerName = ownerInfo.Entities[0].Nickname
+		}
+		if ownerName == "" {
+			if ownerID != "" {
+				ownerName = ownerID
+			} else {
+				ownerName = serverCode
+			}
+		}
 
 		// 进入租赁服世界
 		enterResp, err := cli.EnterRentalServerWorld(serverID.String(), p.ServerPassword)
@@ -428,6 +450,50 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 			return result, fmt.Errorf("EnterRentalServerWorld: %s(%d)", enterResp.Message, enterResp.Code)
 		}
 		ipAddress = fmt.Sprintf("%s:%d", enterResp.Entity.McserverHost, enterResp.Entity.McserverPort.Int64())
+
+		service, err := link.NewLinkConnectionService(cli)
+		if err != nil {
+			return result, err
+		}
+		dialCtx := ctx
+		if dialCtx == nil {
+			dialCtx = context.Background()
+		}
+		dialCtx, cancel := context.WithTimeout(dialCtx, 5*time.Second)
+		defer cancel()
+		conn, err := service.Dial(dialCtx)
+		if err != nil {
+			return result, err
+		}
+
+		gameInfo := map[string]interface{}{
+			"min_level": serverEntity.MinLevel.Int64(),
+			"room_name": serverCode,
+			"gameType":  "RentalGame",
+			"res_name":  serverCode,
+			"ownerName": ownerName,
+			"ownerId":   ownerID,
+			"id":        serverEntity.EntityID.String(),
+		}
+		gameInfoJSON, err := json.Marshal(gameInfo)
+		if err != nil {
+			return result, fmt.Errorf("marshal rental game info: %w", err)
+		}
+		gameStartPayload := map[string]interface{}{
+			"game_info":    string(gameInfoJSON),
+			"strict_mode":  true,
+			"game_type":    10,
+			"is_free_play": false,
+			"game_id":      serverEntity.EntityID.String(),
+			"play_iids":    []string{},
+		}
+		if err := conn.SendGameStart(gameStartPayload); err != nil {
+			return result, fmt.Errorf("SendGameStart: %w", err)
+		}
+
+		if err := conn.Conn().Close(); err != nil {
+			return result, fmt.Errorf("Close: %w", err)
+		}
 
 		// 获取 ChainInfo
 		authv2Data, err := cli.GenerateRentalGameAuthV2(serverID.String(), p.ClientPublicKey)
@@ -452,24 +518,6 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 	result.BotLevel = int(cli.UserDetail.Level.Int64())
 	result.EngineVersion = cli.EngineVersion
 	result.PatchVersion = cli.G79LatestVersion
-	/*
-	service, err := link.NewLinkConnectionService(cli)
-	if err != nil {
-		return result, err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	conn, err := service.Dial(ctx)
-	if err != nil {
-		return result, err
-	}
-	defer conn.Close()
-	if err := conn.SendGameStart(nil); err != nil {
-		return result, err
-	}
-	if err := conn.SendGameStop(nil); err != nil {
-		return result, err
-	}
-	*/
+
 	return result, nil
 }

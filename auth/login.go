@@ -518,9 +518,6 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 	result.BotLevel = int(cli.UserDetail.Level.Int64())
 	result.EngineVersion = cli.EngineVersion
 	result.PatchVersion = cli.G79LatestVersion
-<<<<<<< HEAD
-
-=======
 	/*
 		service, err := link.NewLinkConnectionService(cli)
 		if err != nil {
@@ -540,6 +537,5 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 			return result, err
 		}
 	*/
->>>>>>> refs/remotes/origin/main
 	return result, nil
 }

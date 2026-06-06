@@ -82,7 +82,7 @@ func freePortLinux(port int) {
 			continue
 		}
 		log.Printf("[port] sending SIGTERM to pid=%d for port %d", pid, port)
-		_ = syscall.Kill(pid, syscall.SIGTERM)
+		//_ = syscall.Kill(pid, syscall.SIGTERM)
 	}
 	time.Sleep(1200 * time.Millisecond)
 	for pid := range uniq {
@@ -91,7 +91,7 @@ func freePortLinux(port int) {
 		}
 		if alive(pid) {
 			log.Printf("[port] sending SIGKILL to pid=%d for port %d", pid, port)
-			_ = syscall.Kill(pid, syscall.SIGKILL)
+			//_ = syscall.Kill(pid, syscall.SIGKILL)
 		}
 	}
 }

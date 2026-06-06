@@ -9,7 +9,6 @@ import (
 	"time"
 
 	g79 "github.com/Yeah114/g79client"
-	link "github.com/Yeah114/g79client/service/link_connection"
 )
 
 var random = rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -29,7 +28,7 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 		}
 		cli.UserDetail = &detail.Entity
 	}
-	if cli.UserDetail != nil && cli.UserDetail.Name == "" {
+	if (cli.UserDetail != nil && cli.UserDetail.Name == "") || p.AutoUpdateNickname {
 		name := fmt.Sprintf("AE%09d", random.Intn(1000000000))
 		if err := cli.UpdateNickname(name); err != nil {
 			return result, fmt.Errorf("UpdateNickname: %w", err)
@@ -81,66 +80,54 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 			return result, fmt.Errorf("PurchaseItem: %s(%d)", roomMap.Message, roomMap.Code)
 		}
 
-		// 进入房间
-		var enterResp *g79.OnlineLobbyRoomEnterResponse
-		maxRetries := 3
-		for attempt := 1; attempt <= maxRetries; attempt++ {
-			enterResp, err = cli.EnterOnlineLobbyRoom(roomCode, p.ServerPassword)
-			if err != nil {
-				return result, fmt.Errorf("EnterOnlineLobbyRoom: %w", err)
-			}
-			if enterResp.Code != 501 {
-				break
-			}
-			if attempt < maxRetries {
-				_, _ = cli.PurchaseItem(roomInfo.Entity.ResID.String())
-				time.Sleep(500 * time.Millisecond)
-			}
-		}
-		if enterResp.Code == 501 {
-			return result, fmt.Errorf("EnterOnlineLobbyRoom: %s(%d)", enterResp.Message, enterResp.Code)
-		}
-		if enterResp.Code != 0 {
-			return result, fmt.Errorf("EnterOnlineLobbyRoom: %s(%d)", enterResp.Message, enterResp.Code)
+		// 进入房间（含 HTTP 瞬态错误、501、12022 频率限制重试）
+		_, err = enterLobbyRoom(cli, roomCode, p.ServerPassword, func() {
+			_, _ = cli.PurchaseItem(roomInfo.Entity.ResID.String())
+		})
+		if err != nil {
+			return result, err
 		}
 
-		// 进入房间游戏
-		gameEnter, err := cli.OnlineLobbyGameEnter()
+		// 进入房间游戏（含 HTTP 瞬态错误重试）
+		gameEnter, err := lobbyGameEnter(cli)
 		if err != nil {
-			return result, fmt.Errorf("OnlineLobbyGameEnter: %w", err)
-		}
-		if gameEnter.Code != 0 {
-			return result, fmt.Errorf("OnlineLobbyGameEnter: %s(%d)", gameEnter.Message, gameEnter.Code)
+			return result, err
 		}
 		ipAddress = fmt.Sprintf("%s:%d", gameEnter.Entity.ServerHost, gameEnter.Entity.ServerPort.Int64())
 
-		// 获取 ChainInfo
-		authv2Data, err := cli.GenerateLobbyGameAuthV2(roomCode, p.ClientPublicKey)
-		if err != nil {
-			return result, fmt.Errorf("GenerateLobbyGameAuthV2: %w", err)
+		if !p.NoLogin {
+			// 获取 ChainInfo
+			authv2Data, err := cli.GenerateLobbyGameAuthV2(roomCode, p.ClientPublicKey)
+			if err != nil {
+				return result, fmt.Errorf("GenerateLobbyGameAuthV2: %w", err)
+			}
+			chainInfo, err := cli.SendAuthV2Request(authv2Data)
+			if err != nil {
+				return result, fmt.Errorf("SendAuthV2Request: %w", err)
+			}
+			chainInfoStr = string(chainInfo)
 		}
-		chainInfo, err := cli.SendAuthV2Request(authv2Data)
-		if err != nil {
-			return result, fmt.Errorf("SendAuthV2Request: %w", err)
-		}
-		chainInfoStr = string(chainInfo)
 	} else if after, ok := strings.CutPrefix(p.ServerCode, "PCLobbyGame:"); ok && after != "" {
 		// PC联机大厅
-		newCli, err := NewG79Client(ctx)
-		if err != nil {
-			return result, fmt.Errorf("NewClient: %w", err)
-		}
-		for {
-			time.Sleep(time.Second)
-			err = newCli.X19AuthenticateWithCookie(cli.Cookie)
-			if err == nil {
-				break
+		if cli.ReleaseJSON.ApiGatewayUrl != cli.X19ReleaseJSON.ApiGatewayGrayURL {
+			newCli, err := g79.NewClient()
+			if err != nil {
+				return result, fmt.Errorf("NewClient: %w", err)
 			}
-			if strings.Contains(err.Error(), "操作过于频繁，请稍后重试") {
-				continue
+			for {
+				time.Sleep(time.Second * 10)
+				err = newCli.X19AuthenticateWithCookie(cli.Cookie)
+				if err == nil {
+					break
+				}
+				if strings.Contains(err.Error(), "操作过于频繁，请稍后重试") {
+					continue
+				} else {
+					return result, fmt.Errorf("X19AuthenticateWithCookie: %w", err)
+				}
 			}
+			cli = newCli
 		}
-		cli = newCli
 		roomCode := after
 		if len(roomCode) != 19 {
 			searchResp, err := cli.SearchOnlineLobbyRoomByKeyword(roomCode, 1, 0)
@@ -174,49 +161,33 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 			return result, fmt.Errorf("UserItemPurchase: %s(%d)", roomMap.Message, roomMap.Code)
 		}
 
-		// 进入房间
-		var enterResp *g79.OnlineLobbyRoomEnterResponse
-		maxRetries := 5
-		for attempt := 1; attempt <= maxRetries; attempt++ {
-			enterResp, err = cli.EnterOnlineLobbyRoom(roomCode, p.ServerPassword)
-			if err != nil {
-				return result, fmt.Errorf("EnterOnlineLobbyRoom: %w", err)
-			}
-			if enterResp.Code != 501 {
-				break
-			}
-			if attempt < maxRetries {
-				_, _ = cli.UserItemPurchase(roomInfo.Entity.ResID.String())
-				time.Sleep(time.Second)
-			}
-		}
-		if enterResp.Code == 501 {
-			return result, fmt.Errorf("EnterOnlineLobbyRoom: %s(%d)", enterResp.Message, enterResp.Code)
-		}
-		if enterResp.Code != 0 {
-			return result, fmt.Errorf("EnterOnlineLobbyRoom: %s(%d)", enterResp.Message, enterResp.Code)
+		// 进入房间（含 HTTP 瞬态错误、501、12022 频率限制重试）
+		_, err = enterLobbyRoom(cli, roomCode, p.ServerPassword, func() {
+			_, _ = cli.UserItemPurchase(roomInfo.Entity.ResID.String())
+		})
+		if err != nil {
+			return result, err
 		}
 
-		// 进入房间游戏
-		gameEnter, err := cli.OnlineLobbyGameEnter()
+		// 进入房间游戏（含 HTTP 瞬态错误重试）
+		gameEnter, err := lobbyGameEnter(cli)
 		if err != nil {
-			return result, fmt.Errorf("OnlineLobbyGameEnter: %w", err)
-		}
-		if gameEnter.Code != 0 {
-			return result, fmt.Errorf("OnlineLobbyGameEnter: %s(%d)", gameEnter.Message, gameEnter.Code)
+			return result, err
 		}
 		ipAddress = fmt.Sprintf("%s:%d", gameEnter.Entity.ServerHost, gameEnter.Entity.ServerPort.Int64())
 
-		// 获取 ChainInfo
-		authv2Data, err := cli.GeneratePCLobbyGameAuthV2(roomInfo.Entity.ResID.String(), p.ClientPublicKey)
-		if err != nil {
-			return result, fmt.Errorf("GeneratePCLobbyGameAuthV2: %w", err)
+		if !p.NoLogin {
+			// 获取 ChainInfo
+			authv2Data, err := cli.GeneratePCLobbyGameAuthV2(roomInfo.Entity.ResID.String(), p.ClientPublicKey)
+			if err != nil {
+				return result, fmt.Errorf("GeneratePCLobbyGameAuthV2: %w", err)
+			}
+			chainInfo, err := cli.SendAuthV2Request(authv2Data)
+			if err != nil {
+				return result, fmt.Errorf("SendAuthV2Request: %w", err)
+			}
+			chainInfoStr = string(chainInfo)
 		}
-		chainInfo, err := cli.SendAuthV2Request(authv2Data)
-		if err != nil {
-			return result, fmt.Errorf("SendAuthV2Request: %w", err)
-		}
-		chainInfoStr = string(chainInfo)
 		result.IsPC = true
 	} else if after, ok := strings.CutPrefix(p.ServerCode, "NetworkGame:"); ok && after != "" {
 		// 网络游戏
@@ -232,16 +203,18 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 		}
 		ipAddress = fmt.Sprintf("%s:%d", serverAddress.Entity.IP, serverAddress.Entity.Port.Int64())
 
-		// 生成网络游戏认证v2数据
-		authv2Data, err := cli.GenerateNetworkGameAuthV2(gameCode, p.ClientPublicKey)
-		if err != nil {
-			return result, fmt.Errorf("GenerateNetworkGameAuthV2: %w", err)
+		if !p.NoLogin {
+			// 生成网络游戏认证v2数据
+			authv2Data, err := cli.GenerateNetworkGameAuthV2(gameCode, p.ClientPublicKey)
+			if err != nil {
+				return result, fmt.Errorf("GenerateNetworkGameAuthV2: %w", err)
+			}
+			chainInfo, err := cli.SendAuthV2Request(authv2Data)
+			if err != nil {
+				return result, fmt.Errorf("SendAuthV2Request: %w", err)
+			}
+			chainInfoStr = string(chainInfo)
 		}
-		chainInfo, err := cli.SendAuthV2Request(authv2Data)
-		if err != nil {
-			return result, fmt.Errorf("SendAuthV2Request: %w", err)
-		}
-		chainInfoStr = string(chainInfo)
 	} else if p.ServerCode == "MainCity" {
 		// 网易主城
 		_ = cli.LeaveEnteredGame()
@@ -254,15 +227,17 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 			return result, fmt.Errorf("EnterMainCity: %s(%d)", mainCity.Message, mainCity.Code)
 		}
 		ipAddress = fmt.Sprintf("%s:%d", mainCity.Entity.ServerHost, mainCity.Entity.ServerPort)
-		authv2Data, err := cli.GenerateLobbyGameAuthV2(fmt.Sprintf("%d", mainCity.Entity.CityNo), p.ClientPublicKey)
-		if err != nil {
-			return result, fmt.Errorf("GenerateLobbyGameAuthV2: %w", err)
+		if !p.NoLogin {
+			authv2Data, err := cli.GenerateLobbyGameAuthV2(fmt.Sprintf("%d", mainCity.Entity.CityNo), p.ClientPublicKey)
+			if err != nil {
+				return result, fmt.Errorf("GenerateLobbyGameAuthV2: %w", err)
+			}
+			chainInfo, err := cli.SendAuthV2Request(authv2Data)
+			if err != nil {
+				return result, fmt.Errorf("SendAuthV2Request: %w", err)
+			}
+			chainInfoStr = string(chainInfo)
 		}
-		chainInfo, err := cli.SendAuthV2Request(authv2Data)
-		if err != nil {
-			return result, fmt.Errorf("SendAuthV2Request: %w", err)
-		}
-		chainInfoStr = string(chainInfo)
 	} else if after, ok := strings.CutPrefix(p.ServerCode, "DomainGame:"); ok && after != "" {
 		// 我的山头
 		inviteCode := after
@@ -288,14 +263,10 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 		}
 
 		// 获取加入后的山头服务器ID
-		serversResp, err := cli.GetOtherDomainServers()
+		serverID, err := waitDomainServerID(cli)
 		if err != nil {
-			return result, fmt.Errorf("GetOtherDomainServers(after join): %w", err)
+			return result, err
 		}
-		if len(serversResp.Entities) == 0 {
-			return result, fmt.Errorf("GetOtherDomainServers: 加入后未找到山头服务器")
-		}
-		serverID := serversResp.Entities[0].Sid
 
 		// 请求进入山头服务器（获取IP和端口）
 		enterResp, err := cli.RequestEnterDomainServer(serverID)
@@ -307,23 +278,33 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 		}
 		ipAddress = fmt.Sprintf("%s:%d", enterResp.Entity.ServerHost, enterResp.Entity.ServerPort.Int64())
 
-		// 生成DomainGame认证数据并获取ChainInfo
-		authv2Data, err := cli.GenerateDomainGameAuthV2(serverID, p.ClientPublicKey)
-		if err != nil {
-			return result, fmt.Errorf("GenerateDomainGameAuthV2: %w", err)
+		if p.LoginCCVoice {
+			ccVoice, err := getCCVoiceLoginInfo(cli, serverID)
+			if err != nil {
+				return result, err
+			}
+			result.CCVoice = ccVoice
 		}
-		chainInfo, err := cli.SendAuthV2Request(authv2Data)
-		if err != nil {
-			return result, fmt.Errorf("SendAuthV2Request: %w", err)
+
+		if !p.NoLogin {
+			// 生成DomainGame认证数据并获取ChainInfo
+			authv2Data, err := cli.GenerateDomainGameAuthV2(serverID, p.ClientPublicKey)
+			if err != nil {
+				return result, fmt.Errorf("GenerateDomainGameAuthV2: %w", err)
+			}
+			chainInfo, err := cli.SendAuthV2Request(authv2Data)
+			if err != nil {
+				return result, fmt.Errorf("SendAuthV2Request: %w", err)
+			}
+			chainInfoStr = string(chainInfo)
 		}
-		chainInfoStr = string(chainInfo)
 
 		// 请求离开山头服务器
 		leaveResp, err := cli.RequestLeaveDomainServer(serverID)
 		if err != nil {
 			return result, fmt.Errorf("RequestLeaveDomainServer(sid=%s): %w", serverID, err)
 		}
-		if enterResp.Code != 0 {
+		if leaveResp.Code != 0 {
 			return result, fmt.Errorf("RequestLeaveDomainServer: %s(%d)", leaveResp.Message, leaveResp.Code)
 		}
 
@@ -356,14 +337,10 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 		}
 
 		// 获取加入后的山头服务器ID
-		serversResp, err := cli.GetOtherDomainServers()
+		serverID, err := waitDomainServerID(cli)
 		if err != nil {
-			return result, fmt.Errorf("GetOtherDomainServers(after join): %w", err)
+			return result, err
 		}
-		if len(serversResp.Entities) == 0 {
-			return result, fmt.Errorf("GetOtherDomainServers: 加入后未找到山头服务器")
-		}
-		serverID := serversResp.Entities[0].Sid
 
 		// 请求进入山头服务器（获取IP和端口）
 		enterResp, err := cli.RequestEnterDomainServer(serverID)
@@ -375,23 +352,33 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 		}
 		ipAddress = fmt.Sprintf("%s:%d", enterResp.Entity.ServerHost, enterResp.Entity.ServerPort.Int64())
 
-		// 生成PCDomainGame认证数据并获取ChainInfo
-		authv2Data, err := cli.GeneratePCDomainGameAuthV2(serverID, p.ClientPublicKey)
-		if err != nil {
-			return result, fmt.Errorf("GeneratePCDomainGameAuthV2: %w", err)
+		if p.LoginCCVoice {
+			ccVoice, err := getCCVoiceLoginInfo(cli, serverID)
+			if err != nil {
+				return result, err
+			}
+			result.CCVoice = ccVoice
 		}
-		chainInfo, err := cli.SendAuthV2Request(authv2Data)
-		if err != nil {
-			return result, fmt.Errorf("SendAuthV2Request: %w", err)
+
+		if !p.NoLogin {
+			// 生成PCDomainGame认证数据并获取ChainInfo
+			authv2Data, err := cli.GeneratePCDomainGameAuthV2(serverID, p.ClientPublicKey)
+			if err != nil {
+				return result, fmt.Errorf("GeneratePCDomainGameAuthV2: %w", err)
+			}
+			chainInfo, err := cli.SendAuthV2Request(authv2Data)
+			if err != nil {
+				return result, fmt.Errorf("SendAuthV2Request: %w", err)
+			}
+			chainInfoStr = string(chainInfo)
 		}
-		chainInfoStr = string(chainInfo)
 
 		// 请求离开山头服务器
 		leaveResp, err := cli.RequestLeaveDomainServer(serverID)
 		if err != nil {
 			return result, fmt.Errorf("RequestLeaveDomainServer(sid=%s): %w", serverID, err)
 		}
-		if enterResp.Code != 0 {
+		if leaveResp.Code != 0 {
 			return result, fmt.Errorf("RequestLeaveDomainServer: %s(%d)", leaveResp.Message, leaveResp.Code)
 		}
 
@@ -451,21 +438,8 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 		}
 		ipAddress = fmt.Sprintf("%s:%d", enterResp.Entity.McserverHost, enterResp.Entity.McserverPort.Int64())
 
-		service, err := link.NewLinkConnectionService(cli)
-		if err != nil {
-			return result, err
-		}
-		dialCtx := ctx
-		if dialCtx == nil {
-			dialCtx = context.Background()
-		}
-		dialCtx, cancel := context.WithTimeout(dialCtx, 5*time.Second)
-		defer cancel()
-		conn, err := service.Dial(dialCtx)
-		if err != nil {
-			return result, err
-		}
-
+		// 构建 GameStart 负载，但不在此处发送。
+		// 将 G79 客户端和负载传递给上层，在 Minecraft 连接建立后再发送。
 		gameInfo := map[string]interface{}{
 			"min_level": serverEntity.MinLevel.Int64(),
 			"room_name": serverCode,
@@ -479,7 +453,8 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 		if err != nil {
 			return result, fmt.Errorf("marshal rental game info: %w", err)
 		}
-		gameStartPayload := map[string]interface{}{
+		result.G79Client = cli
+		result.GameStartPayload = map[string]interface{}{
 			"game_info":    string(gameInfoJSON),
 			"strict_mode":  true,
 			"game_type":    10,
@@ -487,24 +462,19 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 			"game_id":      serverEntity.EntityID.String(),
 			"play_iids":    []string{},
 		}
-		if err := conn.SendGameStart(gameStartPayload); err != nil {
-			return result, fmt.Errorf("SendGameStart: %w", err)
-		}
 
-		if err := conn.Conn().Close(); err != nil {
-			return result, fmt.Errorf("Close: %w", err)
+		if !p.NoLogin {
+			// 获取 ChainInfo
+			authv2Data, err := cli.GenerateRentalGameAuthV2(serverID.String(), p.ClientPublicKey)
+			if err != nil {
+				return result, fmt.Errorf("GenerateRentalGameAuthV2: %w", err)
+			}
+			chainInfo, err := cli.SendAuthV2Request(authv2Data)
+			if err != nil {
+				return result, fmt.Errorf("SendAuthV2Request: %w", err)
+			}
+			chainInfoStr = string(chainInfo)
 		}
-
-		// 获取 ChainInfo
-		authv2Data, err := cli.GenerateRentalGameAuthV2(serverID.String(), p.ClientPublicKey)
-		if err != nil {
-			return result, fmt.Errorf("GenerateRentalGameAuthV2: %w", err)
-		}
-		chainInfo, err := cli.SendAuthV2Request(authv2Data)
-		if err != nil {
-			return result, fmt.Errorf("SendAuthV2Request: %w", err)
-		}
-		chainInfoStr = string(chainInfo)
 	}
 
 	result.UID = cli.UserID
@@ -518,28 +488,68 @@ func Login(ctx context.Context, cli *g79.Client, p LoginParams) (LoginResult, er
 	result.BotLevel = int(cli.UserDetail.Level.Int64())
 	result.EngineVersion = cli.EngineVersion
 	result.PatchVersion = cli.G79LatestVersion
-<<<<<<< HEAD
+	if result.G79Client == nil {
+		result.G79Client = cli
+	}
+	if result.LocalVitality == nil {
+		localVitality, err := NewLocalVitalityAPI(result.G79Client)
+		if err != nil {
+			return result, fmt.Errorf("NewLocalVitalityAPI: %w", err)
+		}
+		result.LocalVitality = localVitality
+	}
 
-=======
-	/*
-		service, err := link.NewLinkConnectionService(cli)
-		if err != nil {
-			return result, err
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		conn, err := service.Dial(ctx)
-		if err != nil {
-			return result, err
-		}
-		defer conn.Close()
-		if err := conn.SendGameStart(nil); err != nil {
-			return result, err
-		}
-		if err := conn.SendGameStop(nil); err != nil {
-			return result, err
-		}
-	*/
->>>>>>> refs/remotes/origin/main
 	return result, nil
+}
+
+func getCCVoiceLoginInfo(cli *g79.Client, serverID string) (CCVoice, error) {
+	var ccVoice CCVoice
+	voiceResp, err := cli.GetCCVoiceLoginInfo(serverID)
+	if err != nil {
+		return ccVoice, fmt.Errorf("GetCCVoiceLoginInfo(sid=%s): %w", serverID, err)
+	}
+	if voiceResp.Code != 0 {
+		return ccVoice, fmt.Errorf("GetCCVoiceLoginInfo: %s(%d)", voiceResp.Message, voiceResp.Code)
+	}
+
+	data := voiceResp.Entity.DataEntity
+	info := data.InfoData
+	ccVoice = CCVoice{
+		ChannelType: voiceResp.Entity.ChannelType,
+		Stream:      voiceResp.Entity.Stream,
+		Data: CCVoiceData{
+			Info: CCVoiceInfo{
+				StreamName:       info.StreamName,
+				Account:          info.Account,
+				FastReconnection: info.FastReconnection,
+				Uid:              info.Uid,
+				GameUid:          info.GameUid,
+				StatUrl:          mapCCVoiceSubUrlInfo(info.StatUrl),
+				HttpKey:          info.HttpKey,
+				QueryUrl:         mapCCVoiceSubUrlInfo(info.QueryUrl),
+				ChannelType:      info.ChannelType,
+				Game:             info.Game,
+				CheckUrl:         mapCCVoiceSubUrlInfo(info.CheckUrl),
+				SDKConfigs: CCVoiceSDKConfig{
+					StaticResUrl: mapCCVoiceSubUrlInfo(info.SDKConfigs.StaticResUrl),
+					ConfigUrl:    mapCCVoiceSubUrlInfo(info.SDKConfigs.ConfigUrl),
+				},
+			},
+			StreamName: data.StreamName,
+			Ts:         data.Ts,
+			Sign:       data.Sign,
+			Eid:        data.Eid,
+			Streamid:   data.Streamid,
+			Nodes:      data.Nodes,
+		},
+	}
+
+	return ccVoice, nil
+}
+
+func mapCCVoiceSubUrlInfo(info g79.CCVoiceSubUrlInfo) CCVoiceSubUrlInfo {
+	return CCVoiceSubUrlInfo{
+		Http:  info.Http,
+		Https: info.Https,
+	}
 }

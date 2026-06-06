@@ -55,6 +55,8 @@ func RegisterPhoenixLoginRoute(api *gin.RouterGroup) {
 			ServerCode:      req.ServerCode,
 			ServerPassword:  req.ServerPassword,
 			ClientPublicKey: req.ClientPublicKey,
+			LoginCCVoice:    req.LoginCCVoice,
+			NoLogin:         req.NoLogin,
 		})
 		if err != nil {
 			c.JSON(http.StatusOK, LoginResponse{
@@ -107,7 +109,51 @@ func RegisterPhoenixLoginRoute(api *gin.RouterGroup) {
 			MasterName:     loginRes.MasterName,
 			RentalServerIP: loginRes.IP,
 			ChainInfo:      loginRes.ChainInfo,
+			CCVoice:        mapCCVoice(loginRes.CCVoice),
 		}
 		c.JSON(http.StatusOK, resp)
 	})
+}
+
+func mapCCVoice(ccVoice auth.CCVoice) *CCVoice {
+	if ccVoice.ChannelType == "" && ccVoice.Stream == "" && ccVoice.Data.StreamName == "" {
+		return nil
+	}
+
+	return &CCVoice{
+		ChannelType: ccVoice.ChannelType,
+		Stream:      ccVoice.Stream,
+		Data: CCVoiceData{
+			Info: CCVoiceInfo{
+				StreamName:       ccVoice.Data.Info.StreamName,
+				Account:          ccVoice.Data.Info.Account,
+				FastReconnection: ccVoice.Data.Info.FastReconnection,
+				Uid:              ccVoice.Data.Info.Uid,
+				GameUid:          ccVoice.Data.Info.GameUid,
+				StatUrl:          mapCCVoiceSubUrlInfo(ccVoice.Data.Info.StatUrl),
+				HttpKey:          ccVoice.Data.Info.HttpKey,
+				QueryUrl:         mapCCVoiceSubUrlInfo(ccVoice.Data.Info.QueryUrl),
+				ChannelType:      ccVoice.Data.Info.ChannelType,
+				Game:             ccVoice.Data.Info.Game,
+				CheckUrl:         mapCCVoiceSubUrlInfo(ccVoice.Data.Info.CheckUrl),
+				SDKConfigs: CCVoiceSDKConfig{
+					StaticResUrl: mapCCVoiceSubUrlInfo(ccVoice.Data.Info.SDKConfigs.StaticResUrl),
+					ConfigUrl:    mapCCVoiceSubUrlInfo(ccVoice.Data.Info.SDKConfigs.ConfigUrl),
+				},
+			},
+			StreamName: ccVoice.Data.StreamName,
+			Ts:         ccVoice.Data.Ts,
+			Sign:       ccVoice.Data.Sign,
+			Eid:        ccVoice.Data.Eid,
+			Streamid:   ccVoice.Data.Streamid,
+			Nodes:      ccVoice.Data.Nodes,
+		},
+	}
+}
+
+func mapCCVoiceSubUrlInfo(info auth.CCVoiceSubUrlInfo) CCVoiceSubUrlInfo {
+	return CCVoiceSubUrlInfo{
+		Http:  info.Http,
+		Https: info.Https,
+	}
 }

@@ -7,6 +7,8 @@ type LoginRequest struct {
 	ServerCode      string `json:"server_code"`
 	ServerPassword  string `json:"server_passcode"`
 	ClientPublicKey string `json:"client_public_key"`
+	LoginCCVoice    bool   `json:"login_cc_voice,omitempty"`
+	NoLogin         bool   `json:"no_login,omitempty"`
 }
 
 type SkinInfo struct {
@@ -20,6 +22,47 @@ type Message struct {
 	Translation int    `json:"translation,omitempty"`
 }
 
+type CCVoiceSubUrlInfo struct {
+	Http  string `json:"http"`
+	Https string `json:"https"`
+}
+
+type CCVoiceSDKConfig struct {
+	StaticResUrl CCVoiceSubUrlInfo `json:"static_res_url"`
+	ConfigUrl    CCVoiceSubUrlInfo `json:"config_url"`
+}
+
+type CCVoiceInfo struct {
+	StreamName       string            `json:"stream_name"`
+	Account          string            `json:"account"`
+	FastReconnection int               `json:"fast_reconnection"`
+	Uid              string            `json:"uid"`
+	GameUid          int64             `json:"game_uid"`
+	StatUrl          CCVoiceSubUrlInfo `json:"stat_url"`
+	HttpKey          string            `json:"httpkey"`
+	QueryUrl         CCVoiceSubUrlInfo `json:"query_url"`
+	ChannelType      string            `json:"channel_type"`
+	Game             int               `json:"game"`
+	CheckUrl         CCVoiceSubUrlInfo `json:"check_url"`
+	SDKConfigs       CCVoiceSDKConfig  `json:"sdk_configs"`
+}
+
+type CCVoiceData struct {
+	Info       CCVoiceInfo `json:"info"`
+	StreamName string      `json:"stream_name"`
+	Ts         string      `json:"ts"`
+	Sign       string      `json:"sign"`
+	Eid        int64       `json:"eid"`
+	Streamid   string      `json:"streamid"`
+	Nodes      []string    `json:"nodes"`
+}
+
+type CCVoice struct {
+	ChannelType string      `json:"channel_type"`
+	Stream      string      `json:"stream"`
+	Data        CCVoiceData `json:"data"`
+}
+
 type LoginResponse struct {
 	SuccessStates bool   `json:"success"`
 	ServerMessage string `json:"server_msg,omitempty"`
@@ -31,13 +74,14 @@ type LoginResponse struct {
 	MasterName     string          `json:"respond_to,omitempty"`
 	RentalServerIP string          `json:"ip_address"`
 	ChainInfo      string          `json:"chainInfo"`
+	CCVoice        *CCVoice        `json:"cc_voice,omitempty"`
 }
 
 type TransferCheckNumRequest struct {
-	Data           string `json:"data"`
-	EngineVersion  string `json:"engine_version,omitempty"`
-	PatchVersion   string `json:"patch_version,omitempty"`
-	IsPC           *bool  `json:"is_pc,omitempty"`
+	Data          string `json:"data"`
+	EngineVersion string `json:"engine_version,omitempty"`
+	PatchVersion  string `json:"patch_version,omitempty"`
+	IsPC          *bool  `json:"is_pc,omitempty"`
 }
 
 type TransferCheckNumResponse struct {
